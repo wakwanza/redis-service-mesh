@@ -1,0 +1,11 @@
+protected-mode no
+port {{ item }}
+cluster-enabled yes
+cluster-config-file node-{{ item }}.conf
+cluster-node-timeout 2000
+cluster-announce-port {{ item }}
+cluster-announce-bus-port 1{{ item }}
+cluster-announce-ip {{ ansible_default_ipv4.address }}
+cluster-slave-validity-factor 0
+save ""
+include /etc/redis.d/common.conf

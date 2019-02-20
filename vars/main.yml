@@ -1,0 +1,8 @@
+---
+# vars file for redis-service-mesh
+port_start: 6380
+port_end: 6382
+rhosts: ["172.16.0.1","172.16.0.2","172.16.0.3"]
+redis_password: ""
+safe_shutdown: ""
+safe_config: ""

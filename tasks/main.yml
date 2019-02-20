@@ -1,0 +1,97 @@
+---
+# tasks file for redis-service-mesh
+  - name: Make sure redis binary is installed and latest version
+    package: name=redis state=installed
+
+  - name: Install supervisord and startup dependencies
+    pip: name={{ item }} state=present
+    with_items:
+    - supervisor
+    - ordered-startup-supervisord
+
+  - name: Make the supervisor conf directory
+    file: dest=/etc/supervisor state=directory
+
+  - name: Setup the supervisord file
+    copy: src=supervisord.conf dest=/etc/supervisord.conf backup=yes
+    
+  - name: Check for systemd
+    stat: /bin/systemctl
+    register: systemd_init
+
+  - name: Set the init.d script for supervisor
+    copy: src=supervisord dest=/etc/init.d/supervisord mode=0664 backup=yes
+    when: systemd_init.stat.exists == False
+
+  - name: Set the sytemd unit file script for supervisor
+    copy: src=supervisord.service dest=/etc/systemd/system/supervisord.service mode=0664 backup=yes
+    when: systemd_init.stat.exists == True
+
+  - name: Enable the supervisor to start at boot
+    service: name=supervisord state=started enabled=yes
+
+  - name: create redis control group
+    group: name=redis state=present
+
+  - name: Add the redis user
+    user: name=redis groups=redis,disk createhome=no shell=/bin/bash system=yes
+
+  - name: Create the configs directory
+    file: path=/etc/redis.d state=directory owner=redis group=redis
+
+  - name:  Create the folder for persisted data
+    file: path=/var/opt/redis state=directory owner=redis group=users mode=0755
+
+  - name:  Create the log folder
+    file: path=/var/log/redis state=directory owner=redis group=users mode=0755
+
+  - name: Add the master and node config files
+    template: src=redis.j2 dest=/etc/redis.d/redis-{{ item }}.conf owner=redis backup=yes
+    loop: "{{ range(port_start,port_end +1,1)|list }}"
+
+  - name: Add the common file
+    template: src=common.j2 dest=/etc/redis.d/common.conf owner=redis mode=0640
+
+  - name: Create the supervisor ini files per node
+    template: src=redissuper.j2 dest=/etc/supervisor/redis{{ item }}.ini backup=yes
+    loop: "{{ range(port_start,port_end +1,1)|list }}"
+
+  - name: Get the group names and port for supervisord grouping
+    debug: msg={{ item[0] }}{{ item[1] }}
+    loop: "{{ ['redis'] | product(range(port_start,port_end +1,1)) | list }}"
+    register: spgroup_red
+
+  - name: Build the redgroup
+    set_fact:
+      redis_grouping: "{{ spgroup_red | json_query('results[*].msg') | join(',') }}"
+
+  - name: Add the supervisor group file
+    template: src=redisgroup.j2 dest=/etc/supervisor/redis.ini backup=yes
+
+  - name: Tune the system varaibles
+    sysctl: name="net.core.somaxconn" state=present value="2048"
+
+  - name: Check bootstrap status ofthe cluster
+    stat: path=/data/redis_bootstrap_completed
+    register: b_ready
+
+  - name: Create the list for the cluster shards
+    debug: msg="{{ item[0] }}:{{ item[1] }}"
+    loop: "{{ rhosts | product(range(port_start,port_end +1,1))|list }}"
+    register: nodelist
+
+  - name: make the list
+    set_fact:
+      shards_list: "{{ nodelist | json_query('results[*].msg') | join(' ') }}"
+
+  - name: reload the redis group
+    shell: supervisorctl reread && supervisorctl update
+
+  - name: Initiate the cluster if this is the first run
+    command: yes | redis-cli -p {{ port_start }} -a {{ redis_password }} {{ shards_list }}
+    run_once: true
+    when: b_ready.stat.exists == false
+
+  - name: Mark the cluster as already bootstrapped
+    file: path=/opt/redis_bootstrap_completed state=touch
+    ignore_errors: yes

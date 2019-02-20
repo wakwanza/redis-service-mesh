@@ -1,0 +1,12 @@
+[program:redis{{ item }}]
+directory=/var/opt/redis
+command=/usr/local/bin/redis-server /etc/redis.d/redis-{{ item }}.conf
+stopsignal=INT
+user=redis
+stdout_logfile=/var/log/redis/redis{{ item }}.log
+pidfile=/var/run/redis_{{ item }}.pid
+stdout_logfile_maxbytes=10MB
+stdout_logfile_backups=10
+startinorder=true
+autostart=true
+autorestart=true

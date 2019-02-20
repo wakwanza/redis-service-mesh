@@ -1,0 +1,9 @@
+rename-command DEBUG ""
+rename-command SHUTDOWN "{{ safe_shutdown }}"
+rename-command CONFIG "{{ safe_config }}"
+requirepass "{{ redis_password }}"
+masterauth "{{ redis_password }}"
+appendonly no
+auto-aof-rewrite-percentage 0
+tcp-backlog 511
+loglevel notice
